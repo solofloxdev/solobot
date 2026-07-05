@@ -25,20 +25,21 @@ class TTS(commands.Cog):
 
         await interaction.response.defer()
 
-        tts = gTTS(text=message, lang="en")
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-            tts.save(f.name)
-            tmp_path = f.name
+        try:
+            def generate():
+                tts = gTTS(text=message, lang="en")
+                with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+                    tts.save(f.name)
+                    return f.name
 
-        def play():
+            loop = asyncio.get_event_loop()
+            tmp_path = await loop.run_in_executor(None, generate)
+
             source = discord.FFmpegPCMAudio(tmp_path)
-            interaction.guild.voice_client.play(
-                source,
-                after=lambda e: os.unlink(tmp_path)
-            )
-
-        play()
-        await interaction.followup.send(f"🔊 Speaking: *{message}*")
+            interaction.guild.voice_client.play(source, after=lambda e: os.unlink(tmp_path))
+            await interaction.followup.send(f"🔊 Speaking: *{message}*")
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error: `{e}`")
 
 
 async def setup(bot: commands.Bot):
