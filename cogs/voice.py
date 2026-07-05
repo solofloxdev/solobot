@@ -22,10 +22,12 @@ class Voice(commands.Cog):
             if interaction.guild.voice_client:
                 await interaction.guild.voice_client.move_to(channel)
             else:
-                await asyncio.wait_for(channel.connect(), timeout=10)
+                await asyncio.wait_for(channel.connect(self_deaf=True), timeout=15)
             await interaction.followup.send(f"Joined **{channel.name}** — I'll keep it alive. 🔊")
         except asyncio.TimeoutError:
-            await interaction.followup.send("❌ Couldn't connect to the voice channel — this is usually a firewall or network issue blocking Discord's voice UDP ports.")
+            await interaction.followup.send("❌ Timed out connecting to voice — check the bot has Connect permission in that channel.")
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error: `{e}`")
 
     @app_commands.command(name="leave", description="Leave the voice channel")
     async def leave(self, interaction: discord.Interaction):
