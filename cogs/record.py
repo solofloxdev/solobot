@@ -1,20 +1,24 @@
-import asyncio
-import io
-import wave
-
 import discord
 from discord import app_commands
 from discord.ext import commands
-
-
-class RecordingSink(discord.sinks.WaveSink):
-    pass
+from discord.sinks import WaveSink
 
 
 class Record(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.recording = {}
+
+    async def finished_callback(self, sink, channel: discord.TextChannel):
+        files = []
+        for user_id, audio in sink.audio_data.items():
+            audio.file.seek(0)
+            files.append(discord.File(audio.file, filename=f"recording_{user_id}.wav"))
+
+        if files:
+            await channel.send("🎙️ Here's the recording:", files=files[:10])
+        else:
+            await channel.send("No audio was recorded.")
 
     @app_commands.command(name="record", description="Start recording the voice channel")
     async def record(self, interaction: discord.Interaction):
@@ -26,14 +30,14 @@ class Record(commands.Cog):
             return
 
         await interaction.response.defer()
-        self.recording[interaction.guild.id] = interaction.channel
 
-        interaction.guild.voice_client.start_recording(
-            RecordingSink(),
-            self.finished_callback,
-            interaction.channel,
-        )
-        await interaction.followup.send("🔴 Recording started. Use `/stoprecord` to stop and get the file.")
+        try:
+            sink = WaveSink()
+            self.recording[interaction.guild.id] = interaction.channel
+            interaction.guild.voice_client.start_recording(sink, self.finished_callback, interaction.channel)
+            await interaction.followup.send("🔴 Recording started. Use `/stoprecord` to stop and get the file.")
+        except Exception as e:
+            await interaction.followup.send(f"❌ Recording not supported: `{e}`")
 
     @app_commands.command(name="stoprecord", description="Stop recording and get the audio file")
     async def stoprecord(self, interaction: discord.Interaction):
@@ -42,20 +46,13 @@ class Record(commands.Cog):
             return
 
         await interaction.response.defer()
-        interaction.guild.voice_client.stop_recording()
+        try:
+            interaction.guild.voice_client.stop_recording()
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error stopping: `{e}`")
+            return
         self.recording.pop(interaction.guild.id, None)
         await interaction.followup.send("⏹️ Recording stopped — sending files shortly.")
-
-    async def finished_callback(self, sink: RecordingSink, channel: discord.TextChannel):
-        files = []
-        for user_id, audio in sink.audio_data.items():
-            audio.file.seek(0)
-            files.append(discord.File(audio.file, filename=f"recording_{user_id}.wav"))
-
-        if files:
-            await channel.send("🎙️ Here's the recording:", files=files[:10])
-        else:
-            await channel.send("No audio was recorded.")
 
 
 async def setup(bot: commands.Bot):
