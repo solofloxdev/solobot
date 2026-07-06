@@ -35,7 +35,7 @@ class TTS(commands.Cog):
             loop = asyncio.get_event_loop()
             tmp_path = await loop.run_in_executor(None, generate)
 
-            source = discord.FFmpegPCMAudio(tmp_path, executable="ffmpeg")
+            source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(tmp_path, executable="ffmpeg"), volume=1.5)
             interaction.guild.voice_client.play(source, after=lambda e: os.unlink(tmp_path))
             await interaction.followup.send(f"🔊 Speaking: *{message}*")
         except Exception as e:
