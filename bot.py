@@ -11,6 +11,15 @@ load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 
+if not discord.opus.is_loaded():
+    try:
+        discord.opus.load_opus("libopus.so.0")
+    except Exception:
+        try:
+            discord.opus.load_opus("libopus")
+        except Exception:
+            pass
+
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
