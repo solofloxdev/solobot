@@ -1,8 +1,2 @@
 [phases.setup]
-nixPkgs = ["python313", "python313Packages.pip", "ffmpeg", "libopus"]
-
-[phases.install]
-cmds = ["python3 -m venv /opt/venv && . /opt/venv/bin/activate && pip install -r requirements.txt"]
-
-[start]
-cmd = "python3 -u bot.py"
+nixPkgs = ["ffmpeg"]
