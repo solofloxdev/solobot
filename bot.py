@@ -58,17 +58,16 @@ async def on_ready():
     print(f"Opus loaded: {discord.opus.is_loaded()}")
 
 
-async def load_cogs():
+def load_cogs():
     for filename in os.listdir("./cogs"):
         if filename.endswith(".py") and not filename.startswith("_"):
-            await bot.load_extension(f"cogs.{filename[:-3]}")
+            bot.load_extension(f"cogs.{filename[:-3]}")
             print(f"Loaded cog: {filename}")
 
 
 async def main():
-    async with bot:
-        await load_cogs()
-        await bot.start(TOKEN)
+    load_cogs()
+    await bot.start(TOKEN)
 
 
 if __name__ == "__main__":
