@@ -1,5 +1,6 @@
 import os
 import asyncio
+import glob
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
@@ -11,9 +12,9 @@ load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 
+# Load opus
 if not discord.opus.is_loaded():
     import ctypes.util
-    import glob
     opus_lib = ctypes.util.find_library("opus")
     if opus_lib:
         discord.opus.load_opus(opus_lib)
@@ -48,20 +49,20 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(intents=intents)
 
 
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
-    synced = await bot.tree.sync()
-    print(f"Synced {len(synced)} slash command(s)")
+    print(f"Opus loaded: {discord.opus.is_loaded()}")
 
 
 async def load_cogs():
     for filename in os.listdir("./cogs"):
         if filename.endswith(".py") and not filename.startswith("_"):
             await bot.load_extension(f"cogs.{filename[:-3]}")
+            print(f"Loaded cog: {filename}")
 
 
 async def main():

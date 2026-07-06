@@ -1,10 +1,8 @@
 import asyncio
-import io
 import os
 import tempfile
 
 import discord
-from discord import app_commands
 from discord.ext import commands
 from gtts import gTTS
 
@@ -13,18 +11,17 @@ class TTS(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.command(name="tts", description="Speak a message in the voice channel")
-    @app_commands.describe(message="What the bot should say")
-    async def tts(self, interaction: discord.Interaction, message: str):
-        if not interaction.guild.voice_client:
-            await interaction.response.send_message("I'm not in a voice channel. Use `/join` first.", ephemeral=True)
+    @discord.slash_command(name="tts", description="Speak a message in the voice channel")
+    async def tts(self, ctx: discord.ApplicationContext,
+                  message: discord.Option(str, "What the bot should say")):
+        if not ctx.guild.voice_client:
+            await ctx.respond("I'm not in a voice channel. Use `/join` first.", ephemeral=True)
             return
-        if interaction.guild.voice_client.is_playing():
-            await interaction.response.send_message("Already speaking, wait a moment.", ephemeral=True)
+        if ctx.guild.voice_client.is_playing():
+            await ctx.respond("Already speaking, wait a moment.", ephemeral=True)
             return
 
-        await interaction.response.defer()
-
+        await ctx.defer()
         try:
             def generate():
                 tts = gTTS(text=message, lang="en")
@@ -34,14 +31,15 @@ class TTS(commands.Cog):
 
             loop = asyncio.get_event_loop()
             tmp_path = await loop.run_in_executor(None, generate)
-
-            source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(tmp_path, executable="ffmpeg"), volume=1.5)
-            interaction.guild.voice_client.play(source, after=lambda e: os.unlink(tmp_path))
-            await interaction.followup.send(f"🔊 Speaking: *{message}*")
+            source = discord.PCMVolumeTransformer(
+                discord.FFmpegPCMAudio(tmp_path, executable="ffmpeg"), volume=1.5
+            )
+            ctx.guild.voice_client.play(source, after=lambda e: os.unlink(tmp_path))
+            await ctx.followup.send(f"🔊 Speaking: *{message}*")
         except Exception as e:
             import traceback
-            await interaction.followup.send(f"❌ Error: `{traceback.format_exc()[:1800]}`")
+            await ctx.followup.send(f"❌ Error: `{traceback.format_exc()[:1800]}`")
 
 
-async def setup(bot: commands.Bot):
-    await bot.add_cog(TTS(bot))
+def setup(bot: commands.Bot):
+    bot.add_cog(TTS(bot))

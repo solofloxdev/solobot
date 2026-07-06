@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.0
+- Rewrote bot with py-cord for voice recording and STT support
+- Added `/listen` and `/stoplisten` — bot listens to voice and responds via TTS
+- Added `/record` and `/stoprecord` — record VC conversations and get WAV files
+- Added `/adduser`, `/getuser`, `/removeuser`, `/listusers` — user notes system
+- AI chat now knows about saved users and their descriptions
+
 ## 1.3.0
 - Added `/join` and `/leave` voice channel commands to keep VCs alive
 

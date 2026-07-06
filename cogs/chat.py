@@ -1,25 +1,39 @@
 import asyncio
+import io
 import os
 import tempfile
 
 import discord
-from discord import app_commands
 from discord.ext import commands
 from anthropic import AsyncAnthropic
 from gtts import gTTS
 
-SYSTEM_PROMPT = "You are a friendly, helpful Discord bot. Keep replies concise (a few sentences max) since this is a chat app, not an essay."
+from cogs.users import load_notes
+
+BASE_SYSTEM = "You are a friendly, helpful Discord bot. Keep replies concise (a few sentences max) since this is a chat app, not an essay."
 MAX_HISTORY = 10
 
 client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+
+def build_system_prompt(user_id: str = None) -> str:
+    notes = load_notes()
+    if not notes:
+        return BASE_SYSTEM
+    context = "\n\nKnown users:\n" + "\n".join(
+        f"- {data.get('name', uid)} (ID: {uid}): {data['description']}"
+        for uid, data in notes.items()
+    )
+    return BASE_SYSTEM + context
 
 
 class Chat(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.history: dict[int, list[dict]] = {}
+        self.listening: dict[int, discord.TextChannel] = {}
 
-    async def ask_claude(self, channel_id: int, user_message: str) -> str:
+    async def ask_claude(self, channel_id: int, user_message: str, user_id: str = None) -> str:
         history = self.history.setdefault(channel_id, [])
         history.append({"role": "user", "content": user_message})
         history[:] = history[-MAX_HISTORY:]
@@ -27,7 +41,7 @@ class Chat(commands.Cog):
         response = await client.messages.create(
             model="claude-sonnet-4-5",
             max_tokens=500,
-            system=SYSTEM_PROMPT,
+            system=build_system_prompt(user_id),
             messages=history,
         )
         reply = response.content[0].text
@@ -54,20 +68,81 @@ class Chat(commands.Cog):
         except Exception:
             pass
 
-    def is_voice_text_channel(self, channel) -> bool:
+    def is_vc_channel(self, channel) -> bool:
         return isinstance(channel, discord.VoiceChannel)
 
-    @app_commands.command(name="chat", description="Talk to the bot")
-    @app_commands.describe(message="What you want to say")
-    async def chat(self, interaction: discord.Interaction, message: str):
-        await interaction.response.defer()
+    @discord.slash_command(name="chat", description="Talk to the bot")
+    async def chat(self, ctx: discord.ApplicationContext,
+                   message: discord.Option(str, "What you want to say")):
+        await ctx.defer()
         try:
-            reply = await self.ask_claude(interaction.channel_id, message)
+            reply = await self.ask_claude(ctx.channel_id, message, str(ctx.author.id))
         except Exception as e:
             reply = f"Sorry, something went wrong: {e}"
-        await interaction.followup.send(reply)
-        if self.is_voice_text_channel(interaction.channel):
-            await self.speak_in_vc(interaction.guild, reply)
+        await ctx.followup.send(reply)
+        if self.is_vc_channel(ctx.channel):
+            await self.speak_in_vc(ctx.guild, reply)
+
+    @discord.slash_command(name="listen", description="Start listening to voice and responding with TTS")
+    async def listen(self, ctx: discord.ApplicationContext):
+        if not ctx.guild.voice_client:
+            await ctx.respond("I'm not in a voice channel. Use `/join` first.", ephemeral=True)
+            return
+        if ctx.guild.id in self.listening:
+            await ctx.respond("Already listening. Use `/stoplisten` to stop.", ephemeral=True)
+            return
+
+        await ctx.defer()
+        self.listening[ctx.guild.id] = ctx.channel
+
+        ctx.guild.voice_client.start_recording(
+            discord.sinks.WaveSink(),
+            self.finished_listening,
+            ctx.channel,
+        )
+        await ctx.followup.send("👂 Listening... Use `/stoplisten` to stop and I'll respond to what was said.")
+
+    @discord.slash_command(name="stoplisten", description="Stop listening and get an AI response")
+    async def stoplisten(self, ctx: discord.ApplicationContext):
+        if ctx.guild.id not in self.listening:
+            await ctx.respond("Not currently listening.", ephemeral=True)
+            return
+
+        await ctx.defer()
+        ctx.guild.voice_client.stop_recording()
+        self.listening.pop(ctx.guild.id, None)
+        await ctx.followup.send("⏹️ Processing voice...")
+
+    async def finished_listening(self, sink: discord.sinks.WaveSink, channel: discord.TextChannel):
+        import speech_recognition as sr
+
+        recognizer = sr.Recognizer()
+        combined_text = []
+
+        for user_id, audio in sink.audio_data.items():
+            try:
+                audio.file.seek(0)
+                wav_data = audio.file.read()
+                with sr.AudioFile(io.BytesIO(wav_data)) as source:
+                    audio_data = recognizer.record(source)
+                text = recognizer.recognize_google(audio_data)
+                if text.strip():
+                    combined_text.append(text.strip())
+            except Exception:
+                continue
+
+        if not combined_text:
+            await channel.send("❌ Couldn't understand any speech.")
+            return
+
+        full_text = " ".join(combined_text)
+        await channel.send(f"🎙️ Heard: *{full_text}*")
+
+        reply = await self.ask_claude(channel.id, full_text)
+        await channel.send(reply)
+
+        if channel.guild.voice_client:
+            await self.speak_in_vc(channel.guild, reply)
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -75,7 +150,7 @@ class Chat(commands.Cog):
             return
 
         is_dm = isinstance(message.channel, discord.DMChannel)
-        is_vc_chat = self.is_voice_text_channel(message.channel)
+        is_vc = self.is_vc_channel(message.channel)
 
         if not is_dm and self.bot.user not in message.mentions:
             return
@@ -86,15 +161,15 @@ class Chat(commands.Cog):
 
         async with message.channel.typing():
             try:
-                reply = await self.ask_claude(message.channel.id, content)
+                reply = await self.ask_claude(message.channel.id, content, str(message.author.id))
             except Exception as e:
                 reply = f"Sorry, something went wrong: {e}"
 
         await message.reply(reply, mention_author=False)
 
-        if is_vc_chat and message.guild:
+        if is_vc and message.guild:
             await self.speak_in_vc(message.guild, reply)
 
 
-async def setup(bot: commands.Bot):
-    await bot.add_cog(Chat(bot))
+def setup(bot: commands.Bot):
+    bot.add_cog(Chat(bot))
