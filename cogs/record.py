@@ -1,5 +1,30 @@
+import asyncio
+import os
+import tempfile
+
 import discord
 from discord.ext import commands
+from gtts import gTTS
+
+
+async def speak(guild: discord.Guild, text: str):
+    vc = guild.voice_client
+    if not vc:
+        return
+    try:
+        def generate():
+            tts = gTTS(text=text, lang="en")
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+                tts.save(f.name)
+                return f.name
+        loop = asyncio.get_event_loop()
+        tmp_path = await loop.run_in_executor(None, generate)
+        source = discord.PCMVolumeTransformer(
+            discord.FFmpegPCMAudio(tmp_path, executable="ffmpeg"), volume=1.5
+        )
+        vc.play(source, after=lambda e: os.unlink(tmp_path))
+    except Exception:
+        pass
 
 
 class Record(commands.Cog):
@@ -23,7 +48,7 @@ class Record(commands.Cog):
             await ctx.respond("I'm not in a voice channel. Use `/join` first.", ephemeral=True)
             return
         if ctx.guild.id in self.recording:
-            await ctx.respond("Already recording. Use `/stoprecord` to stop.", ephemeral=True)
+            await ctx.respond("Already recording.", ephemeral=True)
             return
 
         await ctx.defer()
@@ -33,7 +58,8 @@ class Record(commands.Cog):
             self.finished_callback,
             ctx.channel,
         )
-        await ctx.followup.send("🔴 Recording started. Use `/stoprecord` to stop and get the file.")
+        await ctx.followup.send("🔴", ephemeral=True)
+        await speak(ctx.guild, "soloflox activated R mode")
 
     @discord.slash_command(name="stoprecord", description="Stop recording and get the audio file")
     async def stoprecord(self, ctx: discord.ApplicationContext):
@@ -44,7 +70,7 @@ class Record(commands.Cog):
         await ctx.defer()
         ctx.guild.voice_client.stop_recording()
         self.recording.pop(ctx.guild.id, None)
-        await ctx.followup.send("⏹️ Recording stopped — sending file shortly.")
+        await ctx.followup.send("⏹️", ephemeral=True)
 
 
 def setup(bot: commands.Bot):
