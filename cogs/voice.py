@@ -21,9 +21,7 @@ class Voice(commands.Cog):
             if ctx.guild.voice_client:
                 await ctx.guild.voice_client.move_to(channel)
             else:
-                await asyncio.wait_for(
-                    channel.connect(self_deaf=False, self_mute=False), timeout=15
-                )
+                await asyncio.wait_for(channel.connect(), timeout=15)
             await ctx.followup.send(f"Joined **{channel.name}** — I'll keep it alive. 🔊")
         except asyncio.TimeoutError:
             await ctx.followup.send("❌ Timed out connecting to voice channel.")
