@@ -44,7 +44,8 @@ class Record(commands.Cog):
 
     @discord.slash_command(name="record", description="Start recording the voice channel")
     async def record(self, ctx: discord.ApplicationContext):
-        if not ctx.guild.voice_client:
+        vc = ctx.guild.voice_client
+        if not vc or not vc.is_connected():
             await ctx.respond("I'm not in a voice channel. Use `/join` first.", ephemeral=True)
             return
         if ctx.guild.id in self.recording:
@@ -53,7 +54,7 @@ class Record(commands.Cog):
 
         await ctx.defer()
         self.recording[ctx.guild.id] = ctx.channel
-        ctx.guild.voice_client.start_recording(
+        vc.start_recording(
             discord.sinks.WaveSink(),
             self.finished_callback,
             ctx.channel,
