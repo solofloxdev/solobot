@@ -85,7 +85,8 @@ class Chat(commands.Cog):
 
     @discord.slash_command(name="listen", description="Start listening to voice and responding with TTS")
     async def listen(self, ctx: discord.ApplicationContext):
-        if not ctx.guild.voice_client:
+        vc = ctx.guild.voice_client
+        if not vc:
             await ctx.respond("I'm not in a voice channel. Use `/join` first.", ephemeral=True)
             return
         if ctx.guild.id in self.listening:
@@ -93,13 +94,21 @@ class Chat(commands.Cog):
             return
 
         await ctx.defer()
-        self.listening[ctx.guild.id] = ctx.channel
+        for _ in range(26):
+            if vc.is_connected():
+                break
+            await asyncio.sleep(0.3)
+        else:
+            await ctx.followup.send("❌ Voice connection not ready yet, try again in a moment.", ephemeral=True)
+            return
 
-        ctx.guild.voice_client.start_recording(
-            discord.sinks.WaveSink(),
-            self.finished_listening,
-            ctx.channel,
-        )
+        self.listening[ctx.guild.id] = ctx.channel
+        try:
+            vc.start_recording(discord.sinks.WaveSink(), self.finished_listening, ctx.channel)
+        except Exception as e:
+            self.listening.pop(ctx.guild.id, None)
+            await ctx.followup.send(f"❌ Could not start listening: `{e}`", ephemeral=True)
+            return
         await ctx.followup.send("👂 Listening... Use `/stoplisten` to stop and I'll respond to what was said.")
 
     @discord.slash_command(name="stoplisten", description="Stop listening and get an AI response")
@@ -109,8 +118,12 @@ class Chat(commands.Cog):
             return
 
         await ctx.defer()
-        ctx.guild.voice_client.stop_recording()
         self.listening.pop(ctx.guild.id, None)
+        try:
+            ctx.guild.voice_client.stop_recording()
+        except Exception as e:
+            await ctx.followup.send(f"❌ Error: `{e}`", ephemeral=True)
+            return
         await ctx.followup.send("⏹️ Processing voice...")
 
     async def finished_listening(self, sink: discord.sinks.WaveSink, channel: discord.TextChannel):

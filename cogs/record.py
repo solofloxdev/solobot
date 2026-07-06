@@ -7,6 +7,15 @@ from discord.ext import commands
 from gtts import gTTS
 
 
+async def wait_for_connection(vc: discord.VoiceClient, timeout: float = 8.0) -> bool:
+    deadline = asyncio.get_event_loop().time() + timeout
+    while asyncio.get_event_loop().time() < deadline:
+        if vc.is_connected():
+            return True
+        await asyncio.sleep(0.3)
+    return False
+
+
 async def speak(guild: discord.Guild, text: str):
     vc = guild.voice_client
     if not vc:
@@ -45,7 +54,7 @@ class Record(commands.Cog):
     @discord.slash_command(name="record", description="Start recording the voice channel")
     async def record(self, ctx: discord.ApplicationContext):
         vc = ctx.guild.voice_client
-        if not vc or not vc.is_connected():
+        if not vc:
             await ctx.respond("I'm not in a voice channel. Use `/join` first.", ephemeral=True)
             return
         if ctx.guild.id in self.recording:
@@ -53,12 +62,17 @@ class Record(commands.Cog):
             return
 
         await ctx.defer()
+        if not await wait_for_connection(vc):
+            await ctx.followup.send("❌ Voice connection not ready yet, try again in a moment.", ephemeral=True)
+            return
+
         self.recording[ctx.guild.id] = ctx.channel
-        vc.start_recording(
-            discord.sinks.WaveSink(),
-            self.finished_callback,
-            ctx.channel,
-        )
+        try:
+            vc.start_recording(discord.sinks.WaveSink(), self.finished_callback, ctx.channel)
+        except Exception as e:
+            self.recording.pop(ctx.guild.id, None)
+            await ctx.followup.send(f"❌ Could not start recording: `{e}`", ephemeral=True)
+            return
         await ctx.followup.send("🔴", ephemeral=True)
         await speak(ctx.guild, "soloflox activated R mode")
 
@@ -69,8 +83,12 @@ class Record(commands.Cog):
             return
 
         await ctx.defer()
-        ctx.guild.voice_client.stop_recording()
         self.recording.pop(ctx.guild.id, None)
+        try:
+            ctx.guild.voice_client.stop_recording()
+        except Exception as e:
+            await ctx.followup.send(f"❌ Error stopping: `{e}`", ephemeral=True)
+            return
         await ctx.followup.send("⏹️", ephemeral=True)
 
 
