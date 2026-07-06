@@ -12,13 +12,18 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 if not discord.opus.is_loaded():
-    try:
-        discord.opus.load_opus("libopus.so.0")
-    except Exception:
-        try:
-            discord.opus.load_opus("libopus")
-        except Exception:
-            pass
+    import ctypes.util
+    import glob
+    opus_lib = ctypes.util.find_library("opus")
+    if opus_lib:
+        discord.opus.load_opus(opus_lib)
+    else:
+        for path in glob.glob("/nix/store/**/libopus.so*", recursive=True):
+            try:
+                discord.opus.load_opus(path)
+                break
+            except Exception:
+                continue
 
 
 class HealthHandler(BaseHTTPRequestHandler):
