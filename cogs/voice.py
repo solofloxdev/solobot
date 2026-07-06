@@ -12,17 +12,15 @@ class Voice(commands.Cog):
             await ctx.respond("You need to be in a voice channel first.", ephemeral=True)
             return
 
-        await ctx.defer()
         channel = ctx.author.voice.channel
-
+        await ctx.respond(f"Joining **{channel.name}**... 🔊", ephemeral=True)
         try:
             if ctx.guild.voice_client:
                 await ctx.guild.voice_client.move_to(channel)
             else:
                 await channel.connect()
-            await ctx.followup.send(f"Joined **{channel.name}** — I'll keep it alive. 🔊")
         except Exception as e:
-            await ctx.followup.send(f"❌ Error: `{e}`")
+            await ctx.send_followup(f"❌ Error: `{e}`", ephemeral=True)
 
     @discord.slash_command(name="leave", description="Leave the voice channel")
     async def leave(self, ctx: discord.ApplicationContext):
