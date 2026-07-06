@@ -1,10 +1,33 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 
 class Voice(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.keepalive_loop.start()
+
+    def cog_unload(self):
+        self.keepalive_loop.cancel()
+
+    @tasks.loop(seconds=30)
+    async def keepalive_loop(self):
+        for guild in self.bot.guilds:
+            vc = guild.voice_client
+            if vc and vc.is_connected() and not vc.is_playing():
+                try:
+                    source = discord.FFmpegPCMAudio(
+                        "anullsrc",
+                        before_options="-f lavfi -ar 48000 -ac 2",
+                        options="-t 0.1",
+                    )
+                    vc.play(source)
+                except Exception:
+                    pass
+
+    @keepalive_loop.before_loop
+    async def before_keepalive(self):
+        await self.bot.wait_until_ready()
 
     @discord.slash_command(name="join", description="Join your voice channel and keep it alive")
     async def join(self, ctx: discord.ApplicationContext):
