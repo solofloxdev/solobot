@@ -1,5 +1,3 @@
-import asyncio
-
 import discord
 from discord.ext import commands
 
@@ -21,10 +19,8 @@ class Voice(commands.Cog):
             if ctx.guild.voice_client:
                 await ctx.guild.voice_client.move_to(channel)
             else:
-                await asyncio.wait_for(channel.connect(), timeout=15)
+                await channel.connect()
             await ctx.followup.send(f"Joined **{channel.name}** — I'll keep it alive. 🔊")
-        except asyncio.TimeoutError:
-            await ctx.followup.send("❌ Timed out connecting to voice channel.")
         except Exception as e:
             await ctx.followup.send(f"❌ Error: `{e}`")
 
