@@ -14,14 +14,22 @@ class TTS(commands.Cog):
     @discord.slash_command(name="tts", description="Speak a message in the voice channel")
     async def tts(self, ctx: discord.ApplicationContext,
                   message: discord.Option(str, "What the bot should say")):
-        if not ctx.guild.voice_client:
+        vc = ctx.guild.voice_client
+        if not vc:
             await ctx.respond("I'm not in a voice channel. Use `/join` first.", ephemeral=True)
             return
-        if ctx.guild.voice_client.is_playing():
+        if vc.is_playing():
             await ctx.respond("Already speaking, wait a moment.", ephemeral=True)
             return
 
         await ctx.defer()
+        for _ in range(26):
+            if vc.is_connected():
+                break
+            await asyncio.sleep(0.3)
+        else:
+            await ctx.followup.send("❌ Voice not ready yet, try again.", ephemeral=True)
+            return
         try:
             def generate():
                 tts = gTTS(text=message, lang="en")
@@ -34,7 +42,7 @@ class TTS(commands.Cog):
             source = discord.PCMVolumeTransformer(
                 discord.FFmpegPCMAudio(tmp_path, executable="ffmpeg"), volume=1.5
             )
-            ctx.guild.voice_client.play(source, after=lambda e: os.unlink(tmp_path))
+            vc.play(source, after=lambda e: os.unlink(tmp_path))
             await ctx.followup.send(f"🔊 Speaking: *{message}*")
         except Exception as e:
             import traceback
