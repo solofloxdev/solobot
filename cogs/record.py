@@ -7,14 +7,6 @@ from discord.ext import commands
 from gtts import gTTS
 
 
-async def wait_for_connection(vc: discord.VoiceClient, timeout: float = 8.0) -> bool:
-    deadline = asyncio.get_event_loop().time() + timeout
-    while asyncio.get_event_loop().time() < deadline:
-        if vc.is_connected():
-            return True
-        await asyncio.sleep(0.3)
-    return False
-
 
 async def speak(guild: discord.Guild, text: str):
     vc = guild.voice_client
@@ -62,17 +54,18 @@ class Record(commands.Cog):
             return
 
         await ctx.defer()
-        if not await wait_for_connection(vc):
-            await ctx.followup.send("❌ Voice connection not ready yet, try again in a moment.", ephemeral=True)
-            return
-
         self.recording[ctx.guild.id] = ctx.channel
-        try:
-            vc.start_recording(discord.sinks.WaveSink(), self.finished_callback, ctx.channel)
-        except Exception as e:
-            self.recording.pop(ctx.guild.id, None)
-            await ctx.followup.send(f"❌ Could not start recording: `{e}`", ephemeral=True)
-            return
+        for attempt in range(5):
+            try:
+                vc.start_recording(discord.sinks.WaveSink(), self.finished_callback, ctx.channel)
+                break
+            except discord.sinks.errors.RecordingException as e:
+                if "Not connected" in str(e) and attempt < 4:
+                    await asyncio.sleep(1)
+                else:
+                    self.recording.pop(ctx.guild.id, None)
+                    await ctx.followup.send(f"❌ Could not start recording: `{e}`", ephemeral=True)
+                    return
         await ctx.followup.send("🔴", ephemeral=True)
         await speak(ctx.guild, "soloflox activated R mode")
 

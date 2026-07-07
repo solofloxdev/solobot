@@ -94,21 +94,18 @@ class Chat(commands.Cog):
             return
 
         await ctx.defer()
-        for _ in range(26):
-            if vc.is_connected():
-                break
-            await asyncio.sleep(0.3)
-        else:
-            await ctx.followup.send("❌ Voice connection not ready yet, try again in a moment.", ephemeral=True)
-            return
-
         self.listening[ctx.guild.id] = ctx.channel
-        try:
-            vc.start_recording(discord.sinks.WaveSink(), self.finished_listening, ctx.channel)
-        except Exception as e:
-            self.listening.pop(ctx.guild.id, None)
-            await ctx.followup.send(f"❌ Could not start listening: `{e}`", ephemeral=True)
-            return
+        for attempt in range(5):
+            try:
+                vc.start_recording(discord.sinks.WaveSink(), self.finished_listening, ctx.channel)
+                break
+            except Exception as e:
+                if "Not connected" in str(e) and attempt < 4:
+                    await asyncio.sleep(1)
+                else:
+                    self.listening.pop(ctx.guild.id, None)
+                    await ctx.followup.send(f"❌ Could not start listening: `{e}`", ephemeral=True)
+                    return
         await ctx.followup.send("👂 Listening... Use `/stoplisten` to stop and I'll respond to what was said.")
 
     @discord.slash_command(name="stoplisten", description="Stop listening and get an AI response")

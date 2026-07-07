@@ -23,13 +23,6 @@ class TTS(commands.Cog):
             return
 
         await ctx.defer()
-        for _ in range(26):
-            if vc.is_connected():
-                break
-            await asyncio.sleep(0.3)
-        else:
-            await ctx.followup.send("❌ Voice not ready yet, try again.", ephemeral=True)
-            return
         try:
             def generate():
                 tts = gTTS(text=message, lang="en")
@@ -42,7 +35,17 @@ class TTS(commands.Cog):
             source = discord.PCMVolumeTransformer(
                 discord.FFmpegPCMAudio(tmp_path, executable="ffmpeg"), volume=1.5
             )
-            vc.play(source, after=lambda e: os.unlink(tmp_path))
+
+            for attempt in range(5):
+                try:
+                    vc.play(source, after=lambda e: os.unlink(tmp_path))
+                    break
+                except discord.ClientException:
+                    if attempt < 4:
+                        await asyncio.sleep(1)
+                    else:
+                        raise
+
             await ctx.followup.send(f"🔊 Speaking: *{message}*")
         except Exception as e:
             import traceback
